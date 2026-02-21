@@ -1,0 +1,29 @@
+# VASIS .gitignore
+
+# Environment variables (contains API keys)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Known faces (privacy - user's personal photos)
+# Uncomment if you want to exclude from version control:
+# known_faces/*.jpg
+# known_faces/*.png

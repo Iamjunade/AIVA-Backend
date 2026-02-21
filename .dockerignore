@@ -1,0 +1,51 @@
+# Android client (not part of server image)
+android/
+
+# Version control
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Environment (secrets — passed at runtime via --env-file)
+.env
+
+# Test artifacts
+tests/
+test_*.py
+htmlcov/
+coverage.xml
+.coverage
+
+# Docs & reports
+docs/
+*.pdf
+*.md
+!README.md
+
+# Temp files
+*.log
+*.txt
+!requirements.txt
+
+# Known faces (mounted at runtime, not baked)
+known_faces/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Gemini agent artifacts
+.gemini/

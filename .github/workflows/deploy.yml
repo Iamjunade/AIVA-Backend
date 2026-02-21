@@ -1,0 +1,155 @@
+name: AIVA Production Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  # Docker / GCP Configuration
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  IMAGE_NAME: aiva-server
+  
+  # Android Configuration
+  ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+jobs:
+  # ===========================================================================
+  # 1. QUALITY GATES (Lint & Test)
+  # ===========================================================================
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Python Setup
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+          
+      - name: Install Python dependencies
+        run: |
+          pip install ruff pytest pytest-asyncio pytest-cov
+          pip install -r requirements.txt
+          
+      # Python Lint
+      - name: Lint with Ruff
+        run: ruff check server/ src/ scripts/
+        
+      # Python Tests
+      - name: Run Pytest with Coverage
+        run: |
+          pytest tests/ -v --cov=server --cov=src --cov-fail-under=60
+
+  # ===========================================================================
+  # 2. SERVER BUILD & DEPLOY (Docker)
+  # ===========================================================================
+  build-server:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Auth to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Configure Docker for GCP
+        run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev
+        
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/aiva-repo/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===========================================================================
+  # 3. ANDROID BUILD (Signed APK/AAB)
+  # ===========================================================================
+  build-android:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+          
+      - name: Decode Keystore
+        run: |
+          echo $ANDROID_KEYSTORE_BASE64 | base64 --decode > android/app/release.keystore
+          
+      - name: Build Signed Release AAB
+        working-directory: ./android
+        env:
+          SIGNING_KEYSTORE_PATH: release.keystore
+          SIGNING_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
+        run: ./gradlew bundleRelease
+        
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-release.aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 7
+
+  # ===========================================================================
+  # 4. RELEASE (GitHub Release on Tag)
+  # ===========================================================================
+  release-android:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Decode Keystore
+        run: |
+          echo ${{ secrets.ANDROID_KEYSTORE_BASE64 }} | base64 --decode > android/app/release.keystore
+          
+      - name: Build Release Bundle
+        working-directory: ./android
+        env:
+          SIGNING_KEYSTORE_PATH: release.keystore
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: ./gradlew bundleRelease
+        
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: android/app/build/outputs/bundle/release/app-release.aab
+          generate_release_notes: true
