@@ -50,6 +50,9 @@ class WebSocketManager(
     private val _commandEvents = MutableSharedFlow<ServerMessage>()
     val commandEvents: SharedFlow<ServerMessage> = _commandEvents.asSharedFlow()
 
+    private val _speechEvents = MutableSharedFlow<ServerMessage>()
+    val speechEvents: SharedFlow<ServerMessage> = _speechEvents.asSharedFlow()
+
     private var webSocket: WebSocket? = null
     private val backoff = BackoffPolicy()
     private var isIntentionalDisconnect = false
@@ -79,12 +82,11 @@ class WebSocketManager(
                     .replace("/ws", "")
                 
                 // Get valid JWT (handles refresh or fetch via master token)
-                val token = jwtTokenManager.getToken(httpUrl)
+                var token = jwtTokenManager.getToken(httpUrl)
                 
                 if (token == null) {
-                    Timber.e("Failed to obtain JWT token")
-                    handleConnectionFailure()
-                    return@launch
+                    Timber.w("Failed to obtain JWT token. Falling back to static Auth Token.")
+                    token = com.aiva.BuildConfig.AUTH_TOKEN
                 }
 
                 val request = Request.Builder()
@@ -149,6 +151,9 @@ class WebSocketManager(
                     if (message.type == "command") {
                         Timber.w("!!! RECEIVED HIGH PRIORITY COMMAND: ${message.action} !!!")
                         scope.launch { _commandEvents.emit(message) }
+                    } else if (message.type == "speech") {
+                        Timber.i("Received Voice Payload for TTS")
+                        scope.launch { _speechEvents.emit(message) }
                     } else {
                         scope.launch { _serverEvents.emit(message) }
                     }

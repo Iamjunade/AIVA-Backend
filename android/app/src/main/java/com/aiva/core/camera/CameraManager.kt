@@ -8,6 +8,7 @@ import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.channels.BufferOverflow
@@ -18,6 +19,8 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class CameraManager(private val context: Context) {
+
+    var surfaceProvider: Preview.SurfaceProvider? = null
 
     private val _frameFlow = MutableSharedFlow<ByteArray>(
         replay = 0,
@@ -48,12 +51,21 @@ class CameraManager(private val context: Context) {
                 processImage(image)
             }
 
+            val useCases = mutableListOf<androidx.camera.core.UseCase>(imageAnalysis)
+            
+            // If the UI has passed us a View connection, bind the Preview use-case too
+            if (surfaceProvider != null) {
+                val preview = Preview.Builder().build()
+                preview.setSurfaceProvider(surfaceProvider)
+                useCases.add(preview)
+            }
+
             try {
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(
                     lifecycleOwner,
                     CameraSelector.DEFAULT_BACK_CAMERA,
-                    imageAnalysis
+                    *useCases.toTypedArray()
                 )
                 Timber.i("Camera bound (640x480)")
             } catch (exc: Exception) {

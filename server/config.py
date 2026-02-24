@@ -21,7 +21,7 @@ load_dotenv(_PROJECT_ROOT / ".env")
 # =============================================================================
 
 SERVER_HOST = os.getenv("AIVA_HOST", "0.0.0.0")
-SERVER_PORT = int(os.getenv("AIVA_PORT", "8765"))
+SERVER_PORT = int(os.getenv("PORT", os.getenv("AIVA_PORT", "8765")))
 
 # Maximum concurrent client connections (resource protection)
 MAX_CLIENTS = int(os.getenv("AIVA_MAX_CLIENTS", "2"))
@@ -53,16 +53,16 @@ MAX_FPS_PER_CLIENT = int(os.getenv("AIVA_MAX_FPS", "30"))
 # =============================================================================
 
 # Total round-trip budget
-LATENCY_BUDGET_TOTAL_MS = 700
+LATENCY_BUDGET_TOTAL_MS = 1500
 
 # Per-stage budgets (for logging/monitoring, not hard enforcement)
-LATENCY_BUDGET_YOLO_MS = 120
-LATENCY_BUDGET_MIDAS_MS = 150
-LATENCY_BUDGET_OCR_MS = 200
-LATENCY_BUDGET_SPATIAL_MS = 5
+LATENCY_BUDGET_YOLO_MS = 400
+LATENCY_BUDGET_MIDAS_MS = 800
+LATENCY_BUDGET_OCR_MS = 800
+LATENCY_BUDGET_SPATIAL_MS = 20
 
 # Server-side processing timeout (hard cutoff)
-PROCESSING_TIMEOUT_MS = 650  # Leave 50ms for network
+PROCESSING_TIMEOUT_MS = 1400  # Leave 100ms for network
 
 
 # =============================================================================

@@ -56,9 +56,11 @@ from server.protocol import (
     MessageType,
     HEADER_SIZE,
     CommandResponse,
+    SpeechResponse,
 )
 from server.frame_processor import FrameProcessor
 from server.intent_classifier import IntentClassifier, Intent
+from server.memory_engine import ContinuousMemoryEngine
 from src.speech_engine import SpeechEngine
 
 
@@ -99,10 +101,13 @@ class AIVAServer:
         self._processor: FrameProcessor = None  # Lazy init
         self._speech_engine: SpeechEngine = None # Lazy init
         self._intent_classifier: IntentClassifier = None
+        self._memory_engine: ContinuousMemoryEngine = None
         self._active_clients: Set[str] = set()
         self._client_count = 0
         self._total_frames_processed = 0
         self._shutdown_event = asyncio.Event()
+        self._listening_thread = None
+        self._is_listening = False
 
     async def start(self) -> None:
         """Start the WebSocket server."""
@@ -115,6 +120,11 @@ class AIVAServer:
         self._processor = FrameProcessor()
         self._speech_engine = SpeechEngine()
         self._intent_classifier = IntentClassifier()
+        self._memory_engine = ContinuousMemoryEngine(
+            sample_interval_sec=4.0,
+            on_face_learned=self._on_face_learned
+        )
+        self._memory_engine.start()
 
         if not self._processor.is_ready:
             logger.error("Critical models failed to load. Server cannot start.")
@@ -123,6 +133,10 @@ class AIVAServer:
         models = self._processor.models_status
         logger.info(f"Models: {json.dumps(models)}")
         logger.info(f"Speech Engine: {'Ready' if self._speech_engine.is_available else 'Mic/Speaker Unavailable (Server Mode)'}")
+
+        # The server now acts purely as a WebSocket backend. 
+        # The laptop microphone continuous listening loop has been disabled.
+        # Mobile applications are expected to stream audio to the FRAME_AUDIO endpoint.
 
         # Start WebSocket server
         logger.info(f"Binding to ws://{SERVER_HOST}:{SERVER_PORT}")
@@ -160,7 +174,44 @@ class AIVAServer:
     def _signal_handler(self) -> None:
         """Handle shutdown signal."""
         logger.info("Shutdown signal received")
+        self._is_listening = False
+        if self._memory_engine:
+            self._memory_engine.stop()
         self._shutdown_event.set()
+
+    def _on_face_learned(self, name: str) -> str:
+        """Callback from memory_engine to reload face models when a new person is registered."""
+        if self._processor and self._processor._face_detector:
+            self._processor._face_detector.load_known_faces()
+            return f"Successfully saved {name} and hot-reloaded the local face database."
+        return f"Saved {name} but could not hot-reload the face database."
+
+    def _continuous_listen_loop(self):
+        """Runs in a background thread, constantly listening to the laptop mic."""
+        # Create a new event loop for this thread to handle async calls if needed, 
+        # though we will use thread-safe calls to the memory engine.
+        while self._is_listening:
+            try:
+                # listen() blocks until it hears something and silence follows
+                text = self._speech_engine.stt.listen(duration=7.0)
+                if text and self._memory_engine:
+                    text_lower = text.lower()
+                    
+                    # Optional: Add a wake word check here if it triggers too often on background noise
+                    # "aiva" or just answer any direct question
+                    
+                    # To avoid answering TV noise, we only respond if it sounds like a question
+                    # or contains our name.
+                    is_question = any(q in text_lower for q in ['what', 'where', 'who', 'how', 'is there', 'are there', 'can you', 'aiva'])
+                    if is_question or len(text) > 15:
+                        logger.info(f"[Hands-Free Mic] Heard: '{text}'")
+                        logger.info("[Hands-Free] Asking Continuous Memory...")
+                        answer = self._memory_engine.ask_memory(text)
+                        logger.info(f"[Hands-Free] AIVA Answer: {answer}")
+                        self._speech_engine.speak_sync(answer)
+            except Exception as e:
+                logger.error(f"[Hands-Free Mic] Loop Error: {e}")
+                time.sleep(1.0)
 
     async def _process_request(self, connection, request):
         """
@@ -331,6 +382,15 @@ class AIVAServer:
         """
         # Must be binary (not text)
         if isinstance(message, str):
+            if message.startswith("TEST_ASK:"):
+                text = message[9:]
+                logger.info(f"Test Ask: '{text}'")
+                if self._memory_engine:
+                    loop = asyncio.get_event_loop()
+                    answer = await loop.run_in_executor(None, self._memory_engine.ask_memory, text)
+                    await websocket.send(json.dumps({"type": "test_answer", "answer": answer}))
+                return
+                
             error = ErrorResponse(
                 code=ErrorCode.INVALID_MESSAGE,
                 message="Expected binary frame, got text"
@@ -391,7 +451,21 @@ class AIVAServer:
                     cmd = CommandResponse(action="LOCATION")
                     await websocket.send(json.dumps(cmd.to_dict()))
                 
-                # TODO: Handle other intents (e.g. SPEAK confirmation)
+                else:
+                    # Route all other inquiries to the continuous memory!
+                    if self._memory_engine:
+                        logger.info(f"Asking Continuous Memory: '{text}'")
+                        answer = await loop.run_in_executor(
+                            None,
+                            self._memory_engine.ask_memory,
+                            text
+                        )
+                        logger.info(f"AIVA Answer: {answer}")
+                        
+                        # Send the textual response back to the client to be spoken natively
+                        speech_pkt = SpeechResponse(text=answer)
+                        await websocket.send(json.dumps(speech_pkt.to_dict()))
+                
                 return
 
             except Exception as e:
@@ -415,6 +489,38 @@ class AIVAServer:
             )
 
             self._total_frames_processed += 1
+            
+            # --- PHASE 2: SEMANTIC MEMORY & PROACTIVE HAZARDS ---
+            semantic_text = ""
+            critical_hazard = ""
+            
+            if response.detections:
+                dets = [f"{d['class']} at {d.get('distance_m', 0):.1f}m" for d in response.detections]
+                semantic_text = f"Visible objects: {', '.join(dets)}."
+                
+            if response.warnings:
+                warns = []
+                for w in response.warnings:
+                    warns.append(w['message'])
+                    # Trigger on critical dangers (using the engine's built-in is_critical flag)
+                    if w.get('is_critical', False):
+                        critical_hazard = w['message']
+                semantic_text += f" Warnings: {', '.join(warns)}."
+
+            if response.faces:
+                semantic_text += f" Recognized People: {', '.join(response.faces)}."
+
+            if response.unknown_faces_count > 0:
+                semantic_text += f" [Unknown Person Detected: {response.unknown_faces_count} unknown faces are in the frame right now.]"
+
+            # Inject semantic text into memory engine
+            if self._memory_engine:
+                self._memory_engine.update_latest_frame(request.payload_bytes, semantic_text)
+                
+            # Proactively speak out critical hazards if speech engine is available
+            # The Android app natively intercepts the `warnings` list and plays Text-to-Speech
+            # directly out of the phone speaker, making the following legacy code obsolete.
+            # (Legacy server speaker code removed)
 
         except asyncio.TimeoutError:
             error = ErrorResponse(

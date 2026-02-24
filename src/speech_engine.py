@@ -273,14 +273,14 @@ class SpeechRecognizer:
 
     def __init__(
         self,
-        model_size: str = MODEL_SIZE,
+        model_name: str = "base.en",
         device: Optional[str] = None
     ):
         """
-        Initialize speech recognizer.
+        Initialize Whisper model.
 
         Args:
-            model_size: Whisper model size ('tiny', 'base', 'small', 'medium')
+            model_name: Whisper model size ('tiny', 'base.en', 'small', etc.)
             device: Force device ('cuda', 'cpu', or None for auto)
         """
         self._model = None
@@ -295,29 +295,28 @@ class SpeechRecognizer:
             print("[SpeechRecognizer] Disabled — sounddevice not installed")
             return
 
-        self._load_model(model_size)
+        self._load_model(model_name)
 
-    def _load_model(self, model_size: str) -> None:
+    def _load_model(self, model_name: str) -> None:
         """Load the Whisper model."""
         try:
-            print(f"[SpeechRecognizer] Loading Whisper '{model_size}' model...")
+            print(f"[SpeechRecognizer] Loading Whisper '{model_name}' model...")
 
+            # Use requested device or fallback to CPU
             import torch
             if self._device:
                 device = self._device
-            elif torch.cuda.is_available():
-                device = "cuda"
-                print("[SpeechRecognizer] ✓ Using CUDA GPU")
             else:
-                device = "cpu"
+                device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            self._model = whisper.load_model(model_size, device=device)
             self._device = device
-            print(f"[SpeechRecognizer] ✓ Whisper '{model_size}' loaded on {device}")
+            self._model = whisper.load_model(model_name, device=device)
+            self._is_available = True
+            print(f"[SpeechRecognizer] \u2713 Whisper '{model_name}' loaded on {self._device}")
 
         except Exception as e:
-            print(f"[SpeechRecognizer] ✗ Failed to load model: {e}")
-            self._model = None
+            print(f"[SpeechRecognizer] \u2717 Failed to load Whisper model: {e}")
+            self._is_available = False
 
     def listen(
         self,

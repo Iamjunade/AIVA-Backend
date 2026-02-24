@@ -31,9 +31,9 @@ class MessageType(IntEnum):
     PING = 0x10            # Keepalive
 
 
-# Binary header format: msg_type (1 byte) + frame_id (4 bytes) + timestamp_ms (4 bytes)
-HEADER_FORMAT = "!BII"  # Network byte order: unsigned char + 2x unsigned int
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # = 9 bytes
+# Binary header format: version (1 byte) + msg_type (1 byte) + frame_id (4 bytes) + timestamp_ms (4 bytes)
+HEADER_FORMAT = "!BBII"  # Network byte order
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # = 10 bytes
 
 
 # =============================================================================
@@ -84,7 +84,7 @@ class FrameRequest:
                 f"minimum {HEADER_SIZE} required"
             )
 
-        msg_type_raw, frame_id, timestamp_ms = struct.unpack(
+        version_raw, msg_type_raw, frame_id, timestamp_ms = struct.unpack(
             HEADER_FORMAT, data[:HEADER_SIZE]
         )
 
@@ -149,6 +149,7 @@ class FrameResponse:
     surroundings: Optional[str] = None
     ocr_text: Optional[str] = None
     faces: List[str] = field(default_factory=list)
+    unknown_faces_count: int = 0
     danger_summary: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -166,6 +167,18 @@ class CommandResponse:
     action: str = ""       # "SOS", "LOCATION", "READ_BATTERY"
     params: Dict = field(default_factory=dict)
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class SpeechResponse:
+    """
+    Speech response sent to the client to be spoken via Text-To-Speech.
+    """
+    text: str
+    type: str = "speech"
+    
     def to_dict(self) -> dict:
         return asdict(self)
 

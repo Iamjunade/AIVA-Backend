@@ -3,7 +3,9 @@ package com.aiva.feature.vision
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.camera.core.Preview
 import com.aiva.core.camera.CameraManager
+import com.aiva.core.audio.AudioCapturer
 import com.aiva.core.connection.ConnectionState
 import com.aiva.core.connection.WebSocketManager
 import com.aiva.core.protocol.FramePacketizer
@@ -25,6 +27,7 @@ import javax.inject.Inject
 class VisionViewModel @Inject constructor(
     private val webSocketManager: WebSocketManager,
     private val cameraManager: CameraManager,
+    private val audioCapturer: AudioCapturer,
     private val ttsManager: TTSManager,
     private val packetizer: FramePacketizer,
     private val settingsRepository: SettingsRepository
@@ -92,6 +95,16 @@ class VisionViewModel @Inject constructor(
                 )
             }
         }
+
+        // Collect Speech Events (AIVA Voice Responses)
+        viewModelScope.launch {
+            webSocketManager.speechEvents.collect { msg ->
+                msg.text?.let { text ->
+                    Timber.i("AIVA Speaking: $text")
+                    ttsManager.speak(text, VoicePriority.INFO)
+                }
+            }
+        }
     }
 
     fun startCamera(lifecycleOwner: LifecycleOwner) {
@@ -129,6 +142,32 @@ class VisionViewModel @Inject constructor(
     fun saveServerUrl(url: String) {
         viewModelScope.launch {
             settingsRepository.saveServerUrl(url)
+        }
+    }
+
+    fun setSurfaceProvider(provider: Preview.SurfaceProvider) {
+        cameraManager.surfaceProvider = provider
+    }
+
+    fun startVoiceCommand() {
+        if (_uiState.value.isMicRecording) return
+        _uiState.update { it.copy(isMicRecording = true) }
+        audioCapturer.startRecording()
+    }
+
+    fun stopVoiceCommand() {
+        if (!_uiState.value.isMicRecording) return
+        _uiState.update { it.copy(isMicRecording = false) }
+
+        viewModelScope.launch {
+            val pcmBytes = audioCapturer.stopRecording()
+            if (pcmBytes != null && pcmBytes.isNotEmpty()) {
+                val packet = packetizer.packAudio(pcmBytes)
+                webSocketManager.sendFrame(packet)
+                Timber.i("Sent ${pcmBytes.size} bytes of audio data")
+            } else {
+                Timber.w("Audio capture was empty or failed")
+            }
         }
     }
 

@@ -16,7 +16,8 @@ data class ServerMessage(
     @Json(name = "code") val errorCode: String? = null,
     @Json(name = "message") val errorMessage: String? = null,
     @Json(name = "action") val action: String? = null,
-    @Json(name = "params") val params: Map<String, Any>? = null
+    @Json(name = "params") val params: Map<String, Any>? = null,
+    @Json(name = "text") val text: String? = null
 )
 
 @JsonClass(generateAdapter = true)
