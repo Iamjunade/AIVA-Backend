@@ -10,7 +10,7 @@ Technology: Ultralytics YOLOv8n (~6MB model, auto-downloaded)
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -57,6 +57,98 @@ SAFETY_PRIORITY_CLASSES = {
     "dining table": 4, "potted plant": 4, "suitcase": 4,
 }
 
+# Safety-critical classes that bypass temporal confirmation
+_SAFETY_BYPASS_CLASSES = {"car", "truck", "bus", "motorcycle", "bicycle"}
+
+
+@dataclass
+class _TrackEntry:
+    """Internal tracking state for a detection across frames."""
+    detection: Detection
+    seen_count: int = 1       # Consecutive frames seen
+    missed_count: int = 0     # Consecutive frames missed
+    confirmed: bool = False   # Whether this detection is confirmed
+
+
+class DetectionTracker:
+    """
+    Temporal detection smoother — eliminates single-frame phantom detections.
+
+    An object must appear in N consecutive frames before being reported.
+    Safety-critical objects (vehicles) bypass confirmation and are reported
+    immediately. Disappeared objects persist briefly to prevent flicker.
+
+    This is the primary defense against YOLO false positives that cause
+    phantom 'car ahead' or 'traffic light' announcements.
+    """
+
+    def __init__(self, confirm_frames: int = 2, expire_frames: int = 3):
+        """
+        Args:
+            confirm_frames: Frames to confirm a NEW object (default: 2)
+            expire_frames: Frames before a GONE object is removed (default: 3)
+        """
+        self._confirm_frames = confirm_frames
+        self._expire_frames = expire_frames
+        self._tracks: Dict[str, _TrackEntry] = {}
+
+    def smooth(self, raw_detections: List[Detection]) -> List[Detection]:
+        """
+        Filter detections through temporal smoothing.
+
+        Args:
+            raw_detections: Current frame's raw YOLO detections
+
+        Returns:
+            Smoothed detections — only confirmed objects
+        """
+        # Build a lookup of current detections by class+direction key
+        current_keys: Dict[str, Detection] = {}
+        for det in raw_detections:
+            key = f"{det.class_name}@{det.direction or 'center'}"
+            # Keep higher confidence if same key
+            if key not in current_keys or det.confidence > current_keys[key].confidence:
+                current_keys[key] = det
+
+        # Update existing tracks
+        updated_keys = set()
+        for key, track in list(self._tracks.items()):
+            if key in current_keys:
+                # Object still present — update
+                track.detection = current_keys[key]
+                track.seen_count += 1
+                track.missed_count = 0
+                if track.seen_count >= self._confirm_frames:
+                    track.confirmed = True
+                updated_keys.add(key)
+            else:
+                # Object missing this frame
+                track.missed_count += 1
+                if track.missed_count >= self._expire_frames:
+                    del self._tracks[key]
+
+        # Add new tracks for unseen objects
+        for key, det in current_keys.items():
+            if key not in updated_keys and key not in self._tracks:
+                is_safety = det.class_name in _SAFETY_BYPASS_CLASSES
+                confirmed = is_safety or (1 >= self._confirm_frames)
+                self._tracks[key] = _TrackEntry(
+                    detection=det,
+                    seen_count=1,
+                    missed_count=0,
+                    confirmed=confirmed,
+                )
+
+        # Return only confirmed detections
+        return [
+            track.detection
+            for track in self._tracks.values()
+            if track.confirmed
+        ]
+
+    def reset(self):
+        """Clear all tracking state."""
+        self._tracks.clear()
 
 class ObjectDetector:
     """
@@ -109,6 +201,15 @@ class ObjectDetector:
         if not YOLO_AVAILABLE:
             print("[ObjectDetector] Detection disabled — ultralytics not installed")
             return
+
+        from server.config import YOLO_CLASS_OVERRIDES, DETECTION_CONFIRM_FRAMES, DETECTION_EXPIRE_FRAMES
+        self._class_overrides = YOLO_CLASS_OVERRIDES
+
+        # Temporal detection tracker (anti-flicker)
+        self._tracker = DetectionTracker(
+            confirm_frames=DETECTION_CONFIRM_FRAMES,
+            expire_frames=DETECTION_EXPIRE_FRAMES,
+        )
 
         self._load_model(model_name)
 
@@ -190,8 +291,9 @@ class ObjectDetector:
                         cls_id = int(boxes.cls[i].cpu().numpy())
                         class_name = self._class_names.get(cls_id, f"class_{cls_id}")
 
-                        # Enforce confidence threshold (double-check)
-                        if conf < self._confidence_threshold:
+                        # Enforce dynamic confidence threshold
+                        threshold = self._class_overrides.get(class_name, self._confidence_threshold)
+                        if conf < threshold:
                             continue
 
                         # Calculate center point
@@ -218,6 +320,11 @@ class ObjectDetector:
                         detections.append(detection)
 
             self._last_detections = detections
+
+            # Temporal smoothing: confirm across frames
+            if hasattr(self, '_tracker'):
+                detections = self._tracker.smooth(detections)
+
             return detections
 
         except Exception as e:

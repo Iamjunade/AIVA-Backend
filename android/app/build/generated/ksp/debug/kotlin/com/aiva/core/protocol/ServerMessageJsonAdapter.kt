@@ -13,6 +13,7 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.`internal`.Util
 import java.lang.NullPointerException
 import java.lang.reflect.Constructor
+import kotlin.Any
 import kotlin.Boolean
 import kotlin.Int
 import kotlin.Long
@@ -20,6 +21,7 @@ import kotlin.String
 import kotlin.Suppress
 import kotlin.Unit
 import kotlin.collections.List
+import kotlin.collections.Map
 import kotlin.collections.emptySet
 import kotlin.jvm.Volatile
 import kotlin.text.buildString
@@ -29,7 +31,7 @@ public class ServerMessageJsonAdapter(
 ) : JsonAdapter<ServerMessage>() {
   private val options: JsonReader.Options = JsonReader.Options.of("type", "frame_id",
       "timestamp_ms", "latency_ms", "detections", "warnings", "ocr_text", "models_loaded", "code",
-      "message")
+      "message", "action", "params", "text")
 
   private val stringAdapter: JsonAdapter<String> = moshi.adapter(String::class.java, emptySet(),
       "type")
@@ -54,6 +56,10 @@ public class ServerMessageJsonAdapter(
   private val nullableBooleanAdapter: JsonAdapter<Boolean?> =
       moshi.adapter(Boolean::class.javaObjectType, emptySet(), "modelsLoaded")
 
+  private val nullableMapOfStringAnyAdapter: JsonAdapter<Map<String, Any>?> =
+      moshi.adapter(Types.newParameterizedType(Map::class.java, String::class.java,
+      Any::class.java), emptySet(), "params")
+
   @Volatile
   private var constructorRef: Constructor<ServerMessage>? = null
 
@@ -71,6 +77,9 @@ public class ServerMessageJsonAdapter(
     var modelsLoaded: Boolean? = null
     var errorCode: String? = null
     var errorMessage: String? = null
+    var action: String? = null
+    var params: Map<String, Any>? = null
+    var text: String? = null
     var mask0 = -1
     reader.beginObject()
     while (reader.hasNext()) {
@@ -122,6 +131,21 @@ public class ServerMessageJsonAdapter(
           // $mask = $mask and (1 shl 9).inv()
           mask0 = mask0 and 0xfffffdff.toInt()
         }
+        10 -> {
+          action = nullableStringAdapter.fromJson(reader)
+          // $mask = $mask and (1 shl 10).inv()
+          mask0 = mask0 and 0xfffffbff.toInt()
+        }
+        11 -> {
+          params = nullableMapOfStringAnyAdapter.fromJson(reader)
+          // $mask = $mask and (1 shl 11).inv()
+          mask0 = mask0 and 0xfffff7ff.toInt()
+        }
+        12 -> {
+          text = nullableStringAdapter.fromJson(reader)
+          // $mask = $mask and (1 shl 12).inv()
+          mask0 = mask0 and 0xffffefff.toInt()
+        }
         -1 -> {
           // Unknown name, skip it.
           reader.skipName()
@@ -130,7 +154,7 @@ public class ServerMessageJsonAdapter(
       }
     }
     reader.endObject()
-    if (mask0 == 0xfffffc01.toInt()) {
+    if (mask0 == 0xffffe001.toInt()) {
       // All parameters with defaults are set, invoke the constructor directly
       return  ServerMessage(
           type = type ?: throw Util.missingProperty("type", "type", reader),
@@ -142,7 +166,10 @@ public class ServerMessageJsonAdapter(
           ocrText = ocrText,
           modelsLoaded = modelsLoaded,
           errorCode = errorCode,
-          errorMessage = errorMessage
+          errorMessage = errorMessage,
+          action = action,
+          params = params,
+          text = text
       )
     } else {
       // Reflectively invoke the synthetic defaults constructor
@@ -151,8 +178,9 @@ public class ServerMessageJsonAdapter(
           ServerMessage::class.java.getDeclaredConstructor(String::class.java,
           Int::class.javaObjectType, Long::class.javaObjectType, Int::class.javaObjectType,
           List::class.java, List::class.java, String::class.java, Boolean::class.javaObjectType,
-          String::class.java, String::class.java, Int::class.javaPrimitiveType,
-          Util.DEFAULT_CONSTRUCTOR_MARKER).also { this.constructorRef = it }
+          String::class.java, String::class.java, String::class.java, Map::class.java,
+          String::class.java, Int::class.javaPrimitiveType, Util.DEFAULT_CONSTRUCTOR_MARKER).also {
+          this.constructorRef = it }
       return localConstructor.newInstance(
           type ?: throw Util.missingProperty("type", "type", reader),
           frameId,
@@ -164,6 +192,9 @@ public class ServerMessageJsonAdapter(
           modelsLoaded,
           errorCode,
           errorMessage,
+          action,
+          params,
+          text,
           mask0,
           /* DefaultConstructorMarker */ null
       )
@@ -195,6 +226,12 @@ public class ServerMessageJsonAdapter(
     nullableStringAdapter.toJson(writer, value_.errorCode)
     writer.name("message")
     nullableStringAdapter.toJson(writer, value_.errorMessage)
+    writer.name("action")
+    nullableStringAdapter.toJson(writer, value_.action)
+    writer.name("params")
+    nullableMapOfStringAnyAdapter.toJson(writer, value_.params)
+    writer.name("text")
+    nullableStringAdapter.toJson(writer, value_.text)
     writer.endObject()
   }
 }

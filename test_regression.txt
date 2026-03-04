@@ -1,0 +1,53 @@
+﻿...................................................FFFFFFFFF............ [ 44%]
+........................................................................ [ 89%]
+.................                                                        [100%]
+================================== FAILURES ===================================
+E   AssertionError: Expected 'detect' to have been called once. Called 0 times.
+C:\Users\junaidpasha\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:918: AssertionError: Expected 'detect' to have been called once. Called 0 times.
+E   AssertionError: assert None == 'Hello World'
+     +  where None = FrameResponse(type='frame_result', frame_id=2, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).ocr_text
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:90: AssertionError: assert None == 'Hello World'
+E   TypeError: argument of type 'NoneType' is not iterable
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:96: TypeError: argument of type 'NoneType' is not iterable
+E   AssertionError: assert 0 > 0
+     +  where 0 = FrameResponse(type='frame_result', frame_id=0, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).timestamp_ms
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:102: AssertionError: assert 0 > 0
+E   AssertionError: assert 0 >= 1
+     +  where 0 = len([])
+     +    where [] = FrameResponse(type='frame_result', frame_id=0, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).detections
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:115: AssertionError: assert 0 >= 1
+E   AssertionError: Expected 'enrich_detections' to have been called.
+C:\Users\junaidpasha\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:908: AssertionError: Expected 'enrich_detections' to have been called.
+E   AssertionError: assert None is not None
+     +  where None = FrameResponse(type='frame_result', frame_id=0, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).surroundings
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:130: AssertionError: assert None is not None
+E   AssertionError: assert None == 'OCR engine not available.'
+     +  where None = FrameResponse(type='frame_result', frame_id=0, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).ocr_text
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:144: AssertionError: assert None == 'OCR engine not available.'
+E   AssertionError: assert None == 'No text detected.'
+     +  where None = FrameResponse(type='frame_result', frame_id=0, timestamp_ms=0, latency_ms=0, detections=[], warnings=[], surroundings=None, ocr_text=None, faces=[], unknown_faces_count=0, danger_summary=None).ocr_text
+C:\Users\junaidpasha\Downloads\VASIS\tests\test_frame_processor.py:150: AssertionError: assert None == 'No text detected.'
+============================== warnings summary ===============================
+tests/test_server_websocket.py::TestWebSocketIntegration::test_connect_receives_connected_message
+  C:\Users\junaidpasha\Downloads\VASIS\server\memory_engine.py:23: FutureWarning: 
+  
+  All support for the `google.generativeai` package has ended. It will no longer be receiving 
+  updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+  See README for more details:
+  
+  https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+  
+    import google.generativeai as genai
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_frame_processor.py::TestPipelineRouting::test_detect_route_calls_yolo
+FAILED tests/test_frame_processor.py::TestPipelineRouting::test_ocr_route_calls_ocr
+FAILED tests/test_frame_processor.py::TestPipelineRouting::test_describe_route_returns_placeholder
+FAILED tests/test_frame_processor.py::TestPipelineRouting::test_latency_populated
+FAILED tests/test_frame_processor.py::TestDetectionPipeline::test_detections_serialized
+FAILED tests/test_frame_processor.py::TestDetectionPipeline::test_depth_enrich_called
+FAILED tests/test_frame_processor.py::TestDetectionPipeline::test_surroundings_populated
+FAILED tests/test_frame_processor.py::TestOCRPipeline::test_ocr_unavailable_message
+FAILED tests/test_frame_processor.py::TestOCRPipeline::test_ocr_no_text - Ass...
+9 failed, 152 passed, 1 warning in 49.95s

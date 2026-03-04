@@ -7,14 +7,24 @@ import android.view.View;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.SavedStateHandle;
 import androidx.lifecycle.ViewModel;
+import com.aiva.core.audio.SpeechRecognizerManager;
 import com.aiva.core.camera.CameraManager;
+import com.aiva.core.connection.JwtTokenManager;
 import com.aiva.core.connection.WebSocketManager;
+import com.aiva.core.location.AivaLocationManager;
 import com.aiva.core.protocol.FramePacketizer;
+import com.aiva.core.service.AivaForegroundService;
+import com.aiva.core.service.AivaForegroundService_MembersInjector;
+import com.aiva.core.sos.SosManager;
 import com.aiva.core.tts.TTSManager;
 import com.aiva.data.repository.SettingsRepository;
 import com.aiva.di.CoreModule;
 import com.aiva.di.CoreModule_ProvideCameraManagerFactory;
 import com.aiva.di.CoreModule_ProvideFramePacketizerFactory;
+import com.aiva.di.CoreModule_ProvideJwtTokenManagerFactory;
+import com.aiva.di.CoreModule_ProvideLocationManagerFactory;
+import com.aiva.di.CoreModule_ProvideSosManagerFactory;
+import com.aiva.di.CoreModule_ProvideSpeechRecognizerManagerFactory;
 import com.aiva.di.CoreModule_ProvideTTSManagerFactory;
 import com.aiva.di.CoreModule_ProvideWebSocketManagerFactory;
 import com.aiva.feature.vision.VisionViewModel;
@@ -449,7 +459,7 @@ public final class DaggerAivaApplication_HiltComponents_SingletonC {
       public T get() {
         switch (id) {
           case 0: // com.aiva.feature.vision.VisionViewModel 
-          return (T) new VisionViewModel(singletonCImpl.provideWebSocketManagerProvider.get(), singletonCImpl.provideCameraManagerProvider.get(), singletonCImpl.provideTTSManagerProvider.get(), singletonCImpl.provideFramePacketizerProvider.get(), singletonCImpl.settingsRepositoryProvider.get());
+          return (T) new VisionViewModel(singletonCImpl.provideWebSocketManagerProvider.get(), singletonCImpl.provideCameraManagerProvider.get(), singletonCImpl.provideSpeechRecognizerManagerProvider.get(), singletonCImpl.provideTTSManagerProvider.get(), singletonCImpl.provideFramePacketizerProvider.get(), singletonCImpl.settingsRepositoryProvider.get());
 
           default: throw new AssertionError(id);
         }
@@ -523,6 +533,20 @@ public final class DaggerAivaApplication_HiltComponents_SingletonC {
 
 
     }
+
+    @Override
+    public void injectAivaForegroundService(AivaForegroundService arg0) {
+      injectAivaForegroundService2(arg0);
+    }
+
+    private AivaForegroundService injectAivaForegroundService2(AivaForegroundService instance) {
+      AivaForegroundService_MembersInjector.injectWebSocketManager(instance, singletonCImpl.provideWebSocketManagerProvider.get());
+      AivaForegroundService_MembersInjector.injectSosManager(instance, singletonCImpl.provideSosManagerProvider.get());
+      AivaForegroundService_MembersInjector.injectLocationManager(instance, singletonCImpl.provideLocationManagerProvider.get());
+      AivaForegroundService_MembersInjector.injectTtsManager(instance, singletonCImpl.provideTTSManagerProvider.get());
+      AivaForegroundService_MembersInjector.injectCameraManager(instance, singletonCImpl.provideCameraManagerProvider.get());
+      return instance;
+    }
   }
 
   private static final class SingletonCImpl extends AivaApplication_HiltComponents.SingletonC {
@@ -530,15 +554,23 @@ public final class DaggerAivaApplication_HiltComponents_SingletonC {
 
     private final SingletonCImpl singletonCImpl = this;
 
+    private Provider<JwtTokenManager> provideJwtTokenManagerProvider;
+
     private Provider<WebSocketManager> provideWebSocketManagerProvider;
 
     private Provider<CameraManager> provideCameraManagerProvider;
+
+    private Provider<SpeechRecognizerManager> provideSpeechRecognizerManagerProvider;
 
     private Provider<TTSManager> provideTTSManagerProvider;
 
     private Provider<FramePacketizer> provideFramePacketizerProvider;
 
     private Provider<SettingsRepository> settingsRepositoryProvider;
+
+    private Provider<AivaLocationManager> provideLocationManagerProvider;
+
+    private Provider<SosManager> provideSosManagerProvider;
 
     private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
       this.applicationContextModule = applicationContextModuleParam;
@@ -548,11 +580,15 @@ public final class DaggerAivaApplication_HiltComponents_SingletonC {
 
     @SuppressWarnings("unchecked")
     private void initialize(final ApplicationContextModule applicationContextModuleParam) {
+      this.provideJwtTokenManagerProvider = DoubleCheck.provider(new SwitchingProvider<JwtTokenManager>(singletonCImpl, 1));
       this.provideWebSocketManagerProvider = DoubleCheck.provider(new SwitchingProvider<WebSocketManager>(singletonCImpl, 0));
-      this.provideCameraManagerProvider = DoubleCheck.provider(new SwitchingProvider<CameraManager>(singletonCImpl, 1));
-      this.provideTTSManagerProvider = DoubleCheck.provider(new SwitchingProvider<TTSManager>(singletonCImpl, 2));
-      this.provideFramePacketizerProvider = DoubleCheck.provider(new SwitchingProvider<FramePacketizer>(singletonCImpl, 3));
-      this.settingsRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<SettingsRepository>(singletonCImpl, 4));
+      this.provideCameraManagerProvider = DoubleCheck.provider(new SwitchingProvider<CameraManager>(singletonCImpl, 2));
+      this.provideSpeechRecognizerManagerProvider = DoubleCheck.provider(new SwitchingProvider<SpeechRecognizerManager>(singletonCImpl, 3));
+      this.provideTTSManagerProvider = DoubleCheck.provider(new SwitchingProvider<TTSManager>(singletonCImpl, 4));
+      this.provideFramePacketizerProvider = DoubleCheck.provider(new SwitchingProvider<FramePacketizer>(singletonCImpl, 5));
+      this.settingsRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<SettingsRepository>(singletonCImpl, 6));
+      this.provideLocationManagerProvider = DoubleCheck.provider(new SwitchingProvider<AivaLocationManager>(singletonCImpl, 8));
+      this.provideSosManagerProvider = DoubleCheck.provider(new SwitchingProvider<SosManager>(singletonCImpl, 7));
     }
 
     @Override
@@ -589,19 +625,31 @@ public final class DaggerAivaApplication_HiltComponents_SingletonC {
       public T get() {
         switch (id) {
           case 0: // com.aiva.core.connection.WebSocketManager 
-          return (T) CoreModule_ProvideWebSocketManagerFactory.provideWebSocketManager();
+          return (T) CoreModule_ProvideWebSocketManagerFactory.provideWebSocketManager(singletonCImpl.provideJwtTokenManagerProvider.get());
 
-          case 1: // com.aiva.core.camera.CameraManager 
+          case 1: // com.aiva.core.connection.JwtTokenManager 
+          return (T) CoreModule_ProvideJwtTokenManagerFactory.provideJwtTokenManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 2: // com.aiva.core.camera.CameraManager 
           return (T) CoreModule_ProvideCameraManagerFactory.provideCameraManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 2: // com.aiva.core.tts.TTSManager 
+          case 3: // com.aiva.core.audio.SpeechRecognizerManager 
+          return (T) CoreModule_ProvideSpeechRecognizerManagerFactory.provideSpeechRecognizerManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 4: // com.aiva.core.tts.TTSManager 
           return (T) CoreModule_ProvideTTSManagerFactory.provideTTSManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 3: // com.aiva.core.protocol.FramePacketizer 
+          case 5: // com.aiva.core.protocol.FramePacketizer 
           return (T) CoreModule_ProvideFramePacketizerFactory.provideFramePacketizer();
 
-          case 4: // com.aiva.data.repository.SettingsRepository 
+          case 6: // com.aiva.data.repository.SettingsRepository 
           return (T) new SettingsRepository(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 7: // com.aiva.core.sos.SosManager 
+          return (T) CoreModule_ProvideSosManagerFactory.provideSosManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideLocationManagerProvider.get());
+
+          case 8: // com.aiva.core.location.AivaLocationManager 
+          return (T) CoreModule_ProvideLocationManagerFactory.provideLocationManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           default: throw new AssertionError(id);
         }

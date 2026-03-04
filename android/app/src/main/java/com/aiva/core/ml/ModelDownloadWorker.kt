@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
+import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import android.app.NotificationChannel
@@ -23,21 +24,6 @@ import java.security.MessageDigest
  * Uses WorkManager to download edge AI models post-installation.
  * Runs with network + battery constraints, supports resume on interruption,
  * and validates SHA-256 hash after download.
- *
- * Enqueue from Application or ViewModel:
- * ```kotlin
- * val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
- *     .setConstraints(Constraints.Builder()
- *         .setRequiredNetworkType(NetworkType.CONNECTED)
- *         .setRequiresBatteryNotLow(true)
- *         .build())
- *     .build()
- * WorkManager.getInstance(context).enqueueUniqueWork(
- *     ModelDownloadWorker.WORK_NAME,
- *     ExistingWorkPolicy.KEEP,
- *     request
- * )
- * ```
  */
 class ModelDownloadWorker(
     appContext: Context,
@@ -49,36 +35,24 @@ class ModelDownloadWorker(
         const val CHANNEL_ID = "aiva_model_download_channel"
         const val NOTIFICATION_ID = 42
 
-        // Progress keys (observed via WorkManager.getWorkInfoByIdLiveData)
+        // Progress keys
         const val KEY_MODEL_NAME = "model_name"
         const val KEY_PROGRESS = "progress"
         const val KEY_BYTES_DOWNLOADED = "bytes_downloaded"
         const val KEY_TOTAL_BYTES = "total_bytes"
 
-        /**
-         * Models to download. Each entry: (filename, URL, expected SHA-256).
-         * Add edge TFLite models here as they become available.
-         */
         private val MODELS = listOf(
             ModelSpec(
                 name = "YOLOv8n TFLite",
                 filename = "yolov8n_float16.tflite",
                 url = "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8n_float16.tflite",
-                sha256 = null, // Set once known
+                sha256 = null,
                 sizeBytes = 6_400_000L,
             ),
-            // Add more edge models as needed:
-            // ModelSpec(
-            //     name = "MiDaS Small TFLite",
-            //     filename = "midas_small.tflite",
-            //     url = "...",
-            //     sha256 = "...",
-            //     sizeBytes = 50_000_000L,
-            // ),
         )
     }
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): ListenableWorker.Result {
         Timber.i("ModelDownloadWorker started (attempt ${runAttemptCount + 1})")
 
         createNotificationChannel()
@@ -92,7 +66,6 @@ class ModelDownloadWorker(
         for ((index, spec) in MODELS.withIndex()) {
             val targetFile = File(modelsDir, spec.filename)
 
-            // Skip if already downloaded and verified
             if (targetFile.exists() && targetFile.length() > 0) {
                 if (spec.sha256 == null || verifyHash(targetFile, spec.sha256)) {
                     Timber.i("  ✓ ${spec.name} already cached")
@@ -104,7 +77,6 @@ class ModelDownloadWorker(
                 }
             }
 
-            // Report progress
             setProgress(workDataOf(
                 KEY_MODEL_NAME to spec.name,
                 KEY_PROGRESS to (index * 100 / MODELS.size),
@@ -123,11 +95,10 @@ class ModelDownloadWorker(
                     ))
                 }
 
-                // Verify hash if specified
                 if (spec.sha256 != null && !verifyHash(targetFile, spec.sha256)) {
                     Timber.e("  ✗ ${spec.name} hash verification failed")
                     targetFile.delete()
-                    return Result.retry()
+                    return ListenableWorker.Result.retry()
                 }
 
                 completed++
@@ -135,27 +106,24 @@ class ModelDownloadWorker(
 
             } catch (e: Exception) {
                 Timber.e(e, "  ✗ Failed to download ${spec.name}")
-                return if (runAttemptCount < 3) Result.retry() else Result.failure(
+                return if (runAttemptCount < 3) ListenableWorker.Result.retry() else ListenableWorker.Result.failure(
                     workDataOf("error" to e.message)
                 )
             }
         }
 
         Timber.i("ModelDownloadWorker completed: $completed/${MODELS.size} models")
-        return Result.success(workDataOf(
+        return ListenableWorker.Result.success(workDataOf(
             KEY_PROGRESS to 100,
             "model_count" to completed,
         ))
     }
 
-    /**
-     * Download a file with progress callback. Supports resume via Range header.
-     */
-    private fun downloadFile(
+    private suspend fun downloadFile(
         urlStr: String,
         target: File,
         expectedSize: Long,
-        onProgress: (downloaded: Long, total: Long) -> Unit
+        onProgress: suspend (downloaded: Long, total: Long) -> Unit
     ) {
         val tempFile = File(target.parent, "${target.name}.tmp")
         val startByte = if (tempFile.exists()) tempFile.length() else 0L
@@ -195,13 +163,9 @@ class ModelDownloadWorker(
             }
         }
 
-        // Atomic rename
         tempFile.renameTo(target)
     }
 
-    /**
-     * Verify SHA-256 hash of a downloaded file.
-     */
     private fun verifyHash(file: File, expectedHash: String): Boolean {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
@@ -216,9 +180,6 @@ class ModelDownloadWorker(
         return actualHash.equals(expectedHash, ignoreCase = true)
     }
 
-    /**
-     * Create foreground notification for long-running download.
-     */
     private fun createForegroundInfo(title: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("AIVA Model Download")
@@ -244,9 +205,6 @@ class ModelDownloadWorker(
         }
     }
 
-    /**
-     * Specification for a downloadable model.
-     */
     private data class ModelSpec(
         val name: String,
         val filename: String,

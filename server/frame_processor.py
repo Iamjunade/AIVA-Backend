@@ -23,10 +23,26 @@ Motion-Delta Safety Check:
 
 import time
 import logging
+import threading
 from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
+
+from src.object_detector import ObjectDetector, Detection
+
+@dataclass
+class ClientState:
+    client_id: str
+    frame_count: int = 0
+    cached_depth_map: Optional[np.ndarray] = None
+    cached_frame_width: int = 0
+    prev_detection_areas: Dict[str, float] = field(default_factory=dict)
+    state_lock: threading.Lock = field(default_factory=threading.Lock)
+    memory_engine: object = None      # ContinuousMemoryEngine instance
+    scene_narrator: object = None     # SceneNarrator instance
+
 
 from src.object_detector import ObjectDetector, Detection
 from src.depth_estimator import DepthEstimator
@@ -46,6 +62,9 @@ from server.config import (
     LATENCY_BUDGET_YOLO_MS,
     LATENCY_BUDGET_MIDAS_MS,
     LATENCY_BUDGET_OCR_MS,
+    FRAME_BLUR_THRESHOLD,
+    FRAME_DARKNESS_THRESHOLD,
+    FRAME_OVEREXPOSURE_PCT,
 )
 from server.ocr_engine import OCREngine
 from server.protocol import (
@@ -108,14 +127,6 @@ class FrameProcessor:
         self._face_detector = None
         self._load_face_detector()
 
-        # Frame-skip state for MiDaS
-        self._frame_count = 0
-        self._cached_depth_map: Optional[np.ndarray] = None
-        self._cached_frame_width: int = 0
-
-        # Motion-delta state: track previous frame's detection areas
-        self._prev_detection_areas: Dict[str, float] = {}
-
         elapsed = (time.time() - start) * 1000
         logger.info(f"Frame processor initialized in {elapsed:.0f}ms")
         logger.info(f"  YOLO: {'ready' if self._detector.is_available else 'FAILED'}")
@@ -140,16 +151,18 @@ class FrameProcessor:
 
     def process(
         self,
-        jpeg_bytes: bytes,
+        frame: np.ndarray,
         msg_type: MessageType,
+        client_state: ClientState,
         frame_id: int = 0,
     ) -> FrameResponse:
         """
-        Process a JPEG frame through the vision pipeline.
+        Process a decoded BGR frame through the vision pipeline.
 
         Args:
-            jpeg_bytes: Raw JPEG image bytes from the mobile client
+            frame: Decoded BGR numpy array
             msg_type: Type of processing requested
+            client_state: Per-client state for motion-delta and depth cache
             frame_id: Client-assigned frame identifier
 
         Returns:
@@ -159,18 +172,23 @@ class FrameProcessor:
         response = FrameResponse(frame_id=frame_id)
         timings: Dict[str, float] = {}
 
-        # Stage 0: Decode JPEG
-        frame = self._decode_jpeg(jpeg_bytes)
-        if frame is None:
+        if frame is None or frame.size == 0:
             response.type = "error"
-            response.danger_summary = "Frame decode failed"
+            response.danger_summary = "Invalid frame"
+            return response
+
+        # --- Frame quality gate ---
+        quality_ok, quality_issue = self._check_frame_quality(frame)
+        if not quality_ok:
+            logger.debug(f"Frame {frame_id} skipped: {quality_issue}")
+            # Return empty but valid response (client keeps using previous data)
             return response
 
         frame_width = frame.shape[1]
 
         # Route to appropriate processing pipeline
         if msg_type == MessageType.FRAME_DETECT:
-            self._process_detection(frame, frame_width, response, timings)
+            self._process_detection(frame, frame_width, response, timings, client_state)
 
         elif msg_type == MessageType.FRAME_OCR:
             self._process_ocr(frame, response, timings)
@@ -205,33 +223,13 @@ class FrameProcessor:
     # PIPELINE STAGES
     # =========================================================================
 
-    def _decode_jpeg(self, jpeg_bytes: bytes) -> Optional[np.ndarray]:
-        """
-        Decode JPEG bytes to OpenCV BGR frame.
-
-        Args:
-            jpeg_bytes: Raw JPEG bytes
-
-        Returns:
-            BGR numpy array or None on failure
-        """
-        try:
-            arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
-            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if frame is None or frame.size == 0:
-                logger.error("JPEG decode returned empty frame")
-                return None
-            return frame
-        except Exception as e:
-            logger.error(f"JPEG decode error: {e}")
-            return None
-
     def _process_detection(
         self,
         frame: np.ndarray,
         frame_width: int,
         response: FrameResponse,
         timings: Dict[str, float],
+        client_state: ClientState,
     ) -> None:
         """
         Run object detection + depth + spatial pipeline.
@@ -252,7 +250,7 @@ class FrameProcessor:
 
         # --- Stage 2: Depth Estimation (with motion-delta safety) ---
         t1 = time.time()
-        depth_map = self._get_depth_map(frame, detections)
+        depth_map = self._get_depth_map(frame, detections, client_state)
         midas_ms = (time.time() - t1) * 1000
         timings["midas_ms"] = round(midas_ms, 1)
 
@@ -297,6 +295,7 @@ class FrameProcessor:
         self,
         frame: np.ndarray,
         detections: List[Detection],
+        client_state: ClientState,
     ) -> Optional[np.ndarray]:
         """
         Get depth map with frame-skipping and motion-delta safety.
@@ -310,23 +309,26 @@ class FrameProcessor:
         Args:
             frame: BGR image
             detections: Current frame's detections
+            client_state: Per-client state
 
         Returns:
             Depth map (may be cached) or None
         """
         if not self._depth.is_available:
-            return self._cached_depth_map
+            with client_state.state_lock:
+                return client_state.cached_depth_map
 
-        self._frame_count += 1
+        with client_state.state_lock:
+            client_state.frame_count += 1
+            # Check motion delta: is anything approaching fast?
+            force_depth = self._check_motion_delta(detections, client_state)
 
-        # Check motion delta: is anything approaching fast?
-        force_depth = self._check_motion_delta(detections)
+            if force_depth:
+                logger.info("Motion-delta triggered: forcing depth estimation")
 
-        if force_depth:
-            logger.info("Motion-delta triggered: forcing depth estimation")
-
-        # Run depth if: forced by motion OR frame-skip interval reached
-        should_run = force_depth or (self._frame_count % MIDAS_FRAME_SKIP == 0)
+            # Run depth if: forced by motion OR frame-skip interval reached
+            should_run = force_depth or (client_state.frame_count % MIDAS_FRAME_SKIP == 0)
+            cached_depth = client_state.cached_depth_map
 
         if should_run:
             t0 = time.time()
@@ -337,15 +339,16 @@ class FrameProcessor:
                 logger.warning(f"MiDaS exceeded budget: {elapsed:.0f}ms > {LATENCY_BUDGET_MIDAS_MS}ms")
 
             if depth_map is not None:
-                self._cached_depth_map = depth_map
-                self._cached_frame_width = frame.shape[1]
+                with client_state.state_lock:
+                    client_state.cached_depth_map = depth_map
+                    client_state.cached_frame_width = frame.shape[1]
 
             return depth_map
         else:
             # Use cached depth map
-            return self._cached_depth_map
+            return cached_depth
 
-    def _check_motion_delta(self, detections: List[Detection]) -> bool:
+    def _check_motion_delta(self, detections: List[Detection], client_state: ClientState) -> bool:
         """
         Check if any detected object is approaching rapidly.
 
@@ -356,8 +359,11 @@ class FrameProcessor:
         This prevents stale depth data when a fast-moving object
         (vehicle, bicycle) is approaching the user.
 
+        Note: Assumes caller holds client_state.state_lock.
+
         Args:
             detections: Current frame's detections
+            client_state: Per-client state
 
         Returns:
             True if immediate depth estimation is needed
@@ -374,8 +380,8 @@ class FrameProcessor:
                 current_areas[key] = area
 
             # Compare with previous frame
-            if key in self._prev_detection_areas:
-                prev_area = self._prev_detection_areas[key]
+            if key in client_state.prev_detection_areas:
+                prev_area = client_state.prev_detection_areas[key]
                 if prev_area > 0:
                     growth = area / prev_area
                     if growth > MIDAS_MOTION_DELTA_THRESHOLD:
@@ -386,7 +392,7 @@ class FrameProcessor:
                         force = True
 
         # Update previous areas for next frame
-        self._prev_detection_areas = current_areas
+        client_state.prev_detection_areas = current_areas
 
         return force
 
@@ -443,12 +449,52 @@ class FrameProcessor:
             face_ms = (time.time() - t0) * 1000
             timings["face_ms"] = round(face_ms, 1)
 
-            # Only include recognized (non-Unknown) faces
+            # Separate recognized and unknown faces
             recognized = [name for name in face_names if name != "Unknown"]
+            unknown_count = face_names.count("Unknown")
+            
             response.faces = recognized
+            response.unknown_faces_count = unknown_count
 
         except Exception as e:
             logger.debug(f"Face recognition error: {e}")
+
+    # =========================================================================
+    # FRAME QUALITY
+    # =========================================================================
+
+    def _check_frame_quality(self, frame: np.ndarray) -> Tuple[bool, str]:
+        """
+        Check if frame quality is sufficient for reliable inference.
+
+        Rejects blurry, too-dark, or overexposed frames to prevent
+        garbage-in-garbage-out detection errors.
+
+        Returns:
+            Tuple of (quality_ok, reason_if_bad)
+        """
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # 1. Darkness check (mean brightness) — check BEFORE blur
+            mean_brightness = gray.mean()
+            if mean_brightness < FRAME_DARKNESS_THRESHOLD:
+                return False, f"Too dark (brightness={mean_brightness:.0f} < {FRAME_DARKNESS_THRESHOLD})"
+
+            # 2. Overexposure check (% of near-white pixels) — check BEFORE blur
+            overexposed_pct = (gray > 245).sum() / gray.size
+            if overexposed_pct > FRAME_OVEREXPOSURE_PCT:
+                return False, f"Overexposed ({overexposed_pct:.0%} > {FRAME_OVEREXPOSURE_PCT:.0%})"
+
+            # 3. Blur detection (Laplacian variance)
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            if laplacian_var < FRAME_BLUR_THRESHOLD:
+                return False, f"Too blurry (laplacian={laplacian_var:.1f} < {FRAME_BLUR_THRESHOLD})"
+
+            return True, ""
+        except Exception as e:
+            logger.debug(f"Quality check error: {e}")
+            return True, ""  # Pass through on error (fail-open for safety)
 
     # =========================================================================
     # STATUS

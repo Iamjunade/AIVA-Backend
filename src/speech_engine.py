@@ -529,7 +529,7 @@ class SpeechEngine:
         tts_volume: float = 1.0
     ):
         self.tts = TextToSpeech(rate=tts_rate, volume=tts_volume)
-        self.stt = SpeechRecognizer(model_size=whisper_model)
+        self.stt = SpeechRecognizer(model_name=whisper_model)
 
     def speak(self, text: str) -> None:
         """Speak text asynchronously."""

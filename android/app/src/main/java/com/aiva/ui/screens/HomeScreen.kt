@@ -3,7 +3,6 @@ package com.aiva.ui.screens
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +44,17 @@ fun HomeScreen(
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseScale"
+    )
+
+    // Mic pulsing animation when listening
+    val micPulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (uiState.isListening) 1.3f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "micPulse"
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -192,9 +201,13 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Push To Talk Button
-        val micColor = if (uiState.isMicRecording) Red else Color.DarkGray
-        val micLabel = if (uiState.isMicRecording) "RECORDING..." else "HOLD TO SPEAK"
+        // Voice Command Button — Tap to Ask (on-device STT)
+        val micColor = if (uiState.isListening) Red else Color.DarkGray
+        val micLabel = when {
+            uiState.isListening -> "LISTENING..."
+            uiState.lastTranscription.isNotBlank() -> "\"${uiState.lastTranscription}\""
+            else -> "TAP TO ASK"
+        }
         
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -202,29 +215,21 @@ fun HomeScreen(
                     .size(80.dp)
                     .clip(CircleShape)
                     .background(micColor)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                viewModel.startVoiceCommand()
-                                tryAwaitRelease()
-                                viewModel.stopVoiceCommand()
-                            }
-                        )
-                    },
+                    .clickable { viewModel.startVoiceCommand() },
                 contentAlignment = Alignment.Center
             ) {
-                if (uiState.isMicRecording) {
-                    // Pulsing effect for mic
+                if (uiState.isListening) {
+                    // Pulsing effect for active listening
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .scale(pulseScale)
+                            .scale(micPulse)
                             .background(Red.copy(alpha = 0.5f), CircleShape)
                     )
                 }
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Push To Talk",
+                    contentDescription = "Tap to Ask",
                     modifier = Modifier.size(40.dp),
                     tint = White
                 )
@@ -233,7 +238,10 @@ fun HomeScreen(
             Text(
                 text = micLabel,
                 style = Typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = micColor
+                color = if (uiState.lastTranscription.isNotBlank() && !uiState.isListening) Green else micColor,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                modifier = Modifier.widthIn(max = 250.dp)
             )
         }
 
@@ -309,4 +317,3 @@ fun TelemetryPill(label: String, value: String, accentColor: Color) {
         }
     }
 }
-

@@ -7,5 +7,8 @@ data class VisionUiState(
     val droppedFrames: Int = 0,
     val warningLevel: String = "NONE",
     val lastAction: String = "",
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val isMicRecording: Boolean = false,
+    val isListening: Boolean = false,
+    val lastTranscription: String = ""
 )

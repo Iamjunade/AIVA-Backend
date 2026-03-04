@@ -4,8 +4,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.camera.core.Preview
+import com.aiva.core.audio.SpeechRecognizerManager
 import com.aiva.core.camera.CameraManager
-import com.aiva.core.audio.AudioCapturer
 import com.aiva.core.connection.ConnectionState
 import com.aiva.core.connection.WebSocketManager
 import com.aiva.core.protocol.FramePacketizer
@@ -27,7 +27,7 @@ import javax.inject.Inject
 class VisionViewModel @Inject constructor(
     private val webSocketManager: WebSocketManager,
     private val cameraManager: CameraManager,
-    private val audioCapturer: AudioCapturer,
+    private val speechRecognizerManager: SpeechRecognizerManager,
     private val ttsManager: TTSManager,
     private val packetizer: FramePacketizer,
     private val settingsRepository: SettingsRepository
@@ -96,13 +96,42 @@ class VisionViewModel @Inject constructor(
             }
         }
 
-        // Collect Speech Events (AIVA Voice Responses)
+        // Collect Speech Events (AIVA Voice Responses — spoken on the phone)
         viewModelScope.launch {
             webSocketManager.speechEvents.collect { msg ->
                 msg.text?.let { text ->
                     Timber.i("AIVA Speaking: $text")
                     ttsManager.speak(text, VoicePriority.INFO)
                 }
+            }
+        }
+
+        // Collect on-device STT results → send as text query to backend
+        viewModelScope.launch {
+            speechRecognizerManager.transcriptionResults.collect { text ->
+                Timber.i("[Mobile STT] Transcribed: '$text'")
+                _uiState.update { it.copy(lastTranscription = text, isListening = false) }
+
+                // Pack recognized text and send to backend
+                val packet = packetizer.packTextQuery(text)
+                webSocketManager.sendFrame(packet)
+                Timber.i("Sent text query to backend: '$text' (${packet.size} bytes)")
+            }
+        }
+
+        // Collect STT listening state
+        viewModelScope.launch {
+            speechRecognizerManager.isListening.collect { listening ->
+                _uiState.update { it.copy(isListening = listening) }
+            }
+        }
+
+        // Collect STT errors
+        viewModelScope.launch {
+            speechRecognizerManager.error.collect { errorMsg ->
+                Timber.w("STT Error: $errorMsg")
+                _uiState.update { it.copy(isListening = false) }
+                ttsManager.speak(errorMsg, VoicePriority.INFO)
             }
         }
     }
@@ -113,7 +142,7 @@ class VisionViewModel @Inject constructor(
         
         // Pipeline: Camera -> Packetizer -> WebSocket
         viewModelScope.launch(Dispatchers.Default) {
-            cameraManager.frameFlow.collect { jpegBytes ->
+            cameraManager.frameFlow.collectLatest { jpegBytes ->
                 // Check if streaming is actually enabled
                 if (_uiState.value.isStreaming) {
                     // Packetize (BigEndian, Timestamp) - Non-blocking
@@ -149,31 +178,26 @@ class VisionViewModel @Inject constructor(
         cameraManager.surfaceProvider = provider
     }
 
+    /**
+     * Start on-device speech recognition.
+     * Tap once to start — SpeechRecognizer auto-stops on silence.
+     * Must be called from Main thread.
+     */
     fun startVoiceCommand() {
-        if (_uiState.value.isMicRecording) return
-        _uiState.update { it.copy(isMicRecording = true) }
-        audioCapturer.startRecording()
-    }
-
-    fun stopVoiceCommand() {
-        if (!_uiState.value.isMicRecording) return
-        _uiState.update { it.copy(isMicRecording = false) }
-
-        viewModelScope.launch {
-            val pcmBytes = audioCapturer.stopRecording()
-            if (pcmBytes != null && pcmBytes.isNotEmpty()) {
-                val packet = packetizer.packAudio(pcmBytes)
-                webSocketManager.sendFrame(packet)
-                Timber.i("Sent ${pcmBytes.size} bytes of audio data")
-            } else {
-                Timber.w("Audio capture was empty or failed")
-            }
+        if (_uiState.value.isListening) {
+            // Already listening, stop it
+            speechRecognizerManager.stopListening()
+            _uiState.update { it.copy(isListening = false) }
+            return
         }
+        _uiState.update { it.copy(isListening = true, lastTranscription = "") }
+        speechRecognizerManager.startListening()
     }
 
     override fun onCleared() {
         super.onCleared()
         webSocketManager.disconnect()
+        speechRecognizerManager.destroy()
         ttsManager.shutdown()
     }
 }

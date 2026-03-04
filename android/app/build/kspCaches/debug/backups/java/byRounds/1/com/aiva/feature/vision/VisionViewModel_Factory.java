@@ -1,5 +1,6 @@
 package com.aiva.feature.vision;
 
+import com.aiva.core.audio.SpeechRecognizerManager;
 import com.aiva.core.camera.CameraManager;
 import com.aiva.core.connection.WebSocketManager;
 import com.aiva.core.protocol.FramePacketizer;
@@ -30,6 +31,8 @@ public final class VisionViewModel_Factory implements Factory<VisionViewModel> {
 
   private final Provider<CameraManager> cameraManagerProvider;
 
+  private final Provider<SpeechRecognizerManager> speechRecognizerManagerProvider;
+
   private final Provider<TTSManager> ttsManagerProvider;
 
   private final Provider<FramePacketizer> packetizerProvider;
@@ -37,11 +40,13 @@ public final class VisionViewModel_Factory implements Factory<VisionViewModel> {
   private final Provider<SettingsRepository> settingsRepositoryProvider;
 
   public VisionViewModel_Factory(Provider<WebSocketManager> webSocketManagerProvider,
-      Provider<CameraManager> cameraManagerProvider, Provider<TTSManager> ttsManagerProvider,
-      Provider<FramePacketizer> packetizerProvider,
+      Provider<CameraManager> cameraManagerProvider,
+      Provider<SpeechRecognizerManager> speechRecognizerManagerProvider,
+      Provider<TTSManager> ttsManagerProvider, Provider<FramePacketizer> packetizerProvider,
       Provider<SettingsRepository> settingsRepositoryProvider) {
     this.webSocketManagerProvider = webSocketManagerProvider;
     this.cameraManagerProvider = cameraManagerProvider;
+    this.speechRecognizerManagerProvider = speechRecognizerManagerProvider;
     this.ttsManagerProvider = ttsManagerProvider;
     this.packetizerProvider = packetizerProvider;
     this.settingsRepositoryProvider = settingsRepositoryProvider;
@@ -49,19 +54,20 @@ public final class VisionViewModel_Factory implements Factory<VisionViewModel> {
 
   @Override
   public VisionViewModel get() {
-    return newInstance(webSocketManagerProvider.get(), cameraManagerProvider.get(), ttsManagerProvider.get(), packetizerProvider.get(), settingsRepositoryProvider.get());
+    return newInstance(webSocketManagerProvider.get(), cameraManagerProvider.get(), speechRecognizerManagerProvider.get(), ttsManagerProvider.get(), packetizerProvider.get(), settingsRepositoryProvider.get());
   }
 
   public static VisionViewModel_Factory create(Provider<WebSocketManager> webSocketManagerProvider,
-      Provider<CameraManager> cameraManagerProvider, Provider<TTSManager> ttsManagerProvider,
-      Provider<FramePacketizer> packetizerProvider,
+      Provider<CameraManager> cameraManagerProvider,
+      Provider<SpeechRecognizerManager> speechRecognizerManagerProvider,
+      Provider<TTSManager> ttsManagerProvider, Provider<FramePacketizer> packetizerProvider,
       Provider<SettingsRepository> settingsRepositoryProvider) {
-    return new VisionViewModel_Factory(webSocketManagerProvider, cameraManagerProvider, ttsManagerProvider, packetizerProvider, settingsRepositoryProvider);
+    return new VisionViewModel_Factory(webSocketManagerProvider, cameraManagerProvider, speechRecognizerManagerProvider, ttsManagerProvider, packetizerProvider, settingsRepositoryProvider);
   }
 
   public static VisionViewModel newInstance(WebSocketManager webSocketManager,
-      CameraManager cameraManager, TTSManager ttsManager, FramePacketizer packetizer,
-      SettingsRepository settingsRepository) {
-    return new VisionViewModel(webSocketManager, cameraManager, ttsManager, packetizer, settingsRepository);
+      CameraManager cameraManager, SpeechRecognizerManager speechRecognizerManager,
+      TTSManager ttsManager, FramePacketizer packetizer, SettingsRepository settingsRepository) {
+    return new VisionViewModel(webSocketManager, cameraManager, speechRecognizerManager, ttsManager, packetizer, settingsRepository);
   }
 }

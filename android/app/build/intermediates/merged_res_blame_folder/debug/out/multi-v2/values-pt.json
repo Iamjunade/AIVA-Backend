@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.aiva.app-mergeDebugResources-60:/values-pt/values-pt.xml",
+            "outputFile": "com.aiva.app-mergeDebugResources-73:/values-pt/values-pt.xml",
             "map": [
                 {
                     "source": "C:\\Users\\junaidpasha\\.gradle\\caches\\transforms-3\\a2e99d5a65fe9785ac21ba299a27bbd7\\transformed\\appcompat-1.6.1\\res\\values-pt\\values-pt.xml",

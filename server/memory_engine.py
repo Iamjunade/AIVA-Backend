@@ -41,10 +41,11 @@ class ContinuousMemoryEngine:
         self._lock = threading.Lock()
         self._running = False
         self._thread = None
-        self._latest_semantic_context = ""
+        self._thread = None
         
         self._model = None
-        self._chat = None
+        self._history = []
+        self._max_history_frames = 10  # About 40 seconds of context (10 * 4s)
         
         self._initialize_genai()
 
@@ -103,11 +104,14 @@ class ContinuousMemoryEngine:
                 "real-time sensory data about detected objects, faces, and proximity hazards. "
                 "Your job is to act as the user's continuous spatial memory and conversational guide.\n\n"
                 "CRITICAL RULES:\n"
-                "1. BE EXTREMELY BRIEF and natural. Your answers are spoken aloud. Never use markdown, bullet points, or complex formatting.\n"
-                "2. Keep responses to 1-2 short sentences maximum. The user cannot wait for long paragraphs.\n"
-                "3. If the user asks what is around them, use the recent sensory data to give a quick, prioritized summary (e.g., 'There's a chair 1 meter ahead and a person to your left.').\n"
-                "4. If the user asks about a past event, use your conversation history to recall it.\n"
-                "5. If a new face is detected, the pipeline will say 'Unknown Person Detected.' Use the save_person_face tool to learn them if the user asks.\n"
+                "1. BE EXTREMELY BRIEF. Maximum 2 sentences, each under 15 words. Your answers are spoken aloud.\n"
+                "2. Never use markdown, bullet points, or complex formatting.\n"
+                "3. Do NOT use filler phrases like 'I can see', 'It appears that', 'It looks like'.\n"
+                "4. Describe the scene reliably. Base your answers SOLELY on the images provided.\n"
+                "5. If the image is blurry, dark, or unclear, say 'The image is unclear' — do NOT guess.\n"
+                "6. Do NOT describe objects you are less than 80% confident about.\n"
+                "7. If the user asks about a past event, use your conversation history to recall it.\n"
+                "8. If a new face is detected, the pipeline will say 'Unknown Person Detected.' Use the save_person_face tool to learn them if the user asks.\n"
             )
             
             self._model = genai.GenerativeModel(
@@ -115,21 +119,24 @@ class ContinuousMemoryEngine:
                 system_instruction=system_instruction,
                 tools=[save_person_face]
             )
-            self._chat = self._model.start_chat(history=[])
-            print(f"[MemoryEngine] ✓ Initialized Gemini ChatSession (Interval {self._sample_interval}s)")
+            self._history = []
+            print(f"[MemoryEngine] ✓ Initialized Gemini Pipeline (Interval {self._sample_interval}s, History: {self._max_history_frames} frames)")
         except Exception as e:
             print(f"[MemoryEngine] ✗ Failed to initialize: {e}")
 
-    def update_latest_frame(self, frame_bytes: bytes, semantic_context: str = "") -> None:
-        """Called constantly by the WebSocket server to provide the latest frame and local AI text."""
+    def update_latest_frame(self, frame_bytes: bytes) -> None:
+        """Called constantly by the WebSocket server to provide the latest frame."""
         with self._lock:
             self._latest_frame_bytes = frame_bytes
-            if semantic_context:
-                self._latest_semantic_context = semantic_context
+
+    def get_latest_frame(self) -> bytes:
+        """Return the most recent frame bytes, or None if no frame available."""
+        with self._lock:
+            return self._latest_frame_bytes
 
     def start(self):
         """Start the background sampling loop."""
-        if not self._chat:
+        if not self._model:
             return
             
         self._running = True
@@ -171,15 +178,12 @@ class ContinuousMemoryEngine:
         while self._running:
             start_time = time.time()
             
-            semantic_text = ""
             with self._lock:
                 frame_bytes = self._latest_frame_bytes
-                semantic_text = self._latest_semantic_context
                 # Keep latest frame available so we can re-sample if video frozen?
                 # Actually, better to clear it, so we don't spam the exact same image 
                 # if the user turns off the camera stream.
                 self._latest_frame_bytes = None
-                self._latest_semantic_context = ""
                 
             if frame_bytes:
                 pil_img = self._prepare_image(frame_bytes)
@@ -187,10 +191,16 @@ class ContinuousMemoryEngine:
                     try:
                         timestamp = time.strftime("%H:%M:%S")
                         msg = f"[SYSTEM: Time is {timestamp}. This is the current camera view. "
-                        if semantic_text:
-                            msg += f"Local AI sensors report the following at this exact moment: {semantic_text}. "
                         msg += "Do not reply, just remember it for context.]"
-                        self._chat.send_message([msg, pil_img])
+                        
+                        self._history.append(msg)
+                        self._history.append(pil_img)
+                        
+                        # Truncate history (2 items per frame)
+                        max_items = self._max_history_frames * 2
+                        if len(self._history) > max_items:
+                            self._history = self._history[-max_items:]
+                            
                     except Exception as e:
                         print(f"[MemoryEngine] Error sending frame to memory: {e}")
 
@@ -200,32 +210,30 @@ class ContinuousMemoryEngine:
 
     def ask_memory(self, question: str) -> str:
         """Ask a question about the current or past context."""
-        if not self._chat:
+        if not self._model:
             return "My visual memory is currently disabled."
             
         try:
             print(f"[MemoryEngine] Querying memory: '{question}'")
             # First, check if there's an immediate latest frame to send WITH the question
             # This ensures the very latest data is evaluated for immediate questions.
-            semantic_text = ""
             with self._lock:
                 frame_bytes = self._latest_frame_bytes
-                semantic_text = self._latest_semantic_context
                 self._latest_frame_bytes = None
-                self._latest_semantic_context = ""
                 
             content = [question]
             if frame_bytes:
                 pil_img = self._prepare_image(frame_bytes)
                 if pil_img:
                     content.append(pil_img)
-                    sys_msg = "[SYSTEM: This is the very latest camera view corresponding to the user's question. "
-                    if semantic_text:
-                        sys_msg += f"Local AI sensors currently report: {semantic_text}."
-                    sys_msg += "]"
+                    sys_msg = "[SYSTEM: This is the very latest camera view corresponding to the user's question. ]"
                     content.append(sys_msg)
 
-            response = self._chat.send_message(content)
+            # Combine sliding window history with the immediate question context
+            request_content = self._history.copy()
+            request_content.extend(content)
+            
+            response = self._model.generate_content(request_content)
             return response.text.strip()
         except Exception as e:
             print(f"[MemoryEngine] Query error: {e}")

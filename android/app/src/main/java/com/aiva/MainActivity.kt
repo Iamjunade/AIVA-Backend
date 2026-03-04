@@ -28,7 +28,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            DebugOverlay(viewModel = viewModel)
+            com.aiva.ui.theme.AivaTheme {
+                com.aiva.ui.AppNavigation(viewModel = viewModel)
+            }
         }
 
         if (allPermissionsGranted()) {

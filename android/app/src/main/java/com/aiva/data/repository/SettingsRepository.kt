@@ -19,7 +19,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     val serverUrl: Flow<String> = context.dataStore.data
         .map { preferences ->
-            preferences[SERVER_URL_KEY] ?: "ws://127.0.0.1:8765"
+            preferences[SERVER_URL_KEY] ?: "ws://localhost:8765"
         }
 
     suspend fun saveServerUrl(url: String) {

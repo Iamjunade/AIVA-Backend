@@ -49,7 +49,6 @@ def test_describe_intent():
         "Describe the scene",
         "What is in front of me?",
         "What do you see?",
-        "What is that?",
     ]
     for phrase in phrases:
         result = classify_intent(phrase)

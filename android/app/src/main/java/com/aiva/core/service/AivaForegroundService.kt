@@ -17,6 +17,7 @@ import com.aiva.core.connection.WebSocketManager
 import com.aiva.core.location.AivaLocationManager
 import com.aiva.core.sos.SosManager
 import com.aiva.core.tts.TTSManager
+import com.aiva.core.tts.VoicePriority
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,16 +66,16 @@ class AivaForegroundService : LifecycleService() {
                     "SOS" -> {
                         Timber.w("Executing SOS Command")
                         sosManager.triggerSos()
-                        ttsManager.speak("Emergency SOS triggered. Sending location to contacts.")
+                        ttsManager.speak("Emergency SOS triggered. Sending location to contacts.", VoicePriority.DANGER)
                     }
                     "LOCATION" -> {
                         Timber.i("Executing Location Command")
                         val location = locationManager.getCurrentLocation()
                         if (location != null) {
                             val text = "You are at coordinates: ${location.latitude}, ${location.longitude}"
-                            ttsManager.speak(text)
+                            ttsManager.speak(text, VoicePriority.INFO)
                         } else {
-                            ttsManager.speak("Unable to determine location.")
+                            ttsManager.speak("Unable to determine location.", VoicePriority.INFO)
                         }
                     }
                     else -> Timber.d("Unknown command action: ${command.action}")
@@ -91,10 +92,6 @@ class AivaForegroundService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         return START_STICKY
-    }
-
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
     }
 
     private fun createNotification(): Notification {

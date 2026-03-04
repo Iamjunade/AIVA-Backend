@@ -23,6 +23,7 @@ class Intent(Enum):
     SURROUNDINGS = "surroundings"
     READ_TEXT = "read_text"
     DESCRIBE = "describe"
+    IDENTIFY = "identify"
     EMERGENCY = "emergency"
     LOCATION = "location"
     BATTERY = "battery"
@@ -42,12 +43,18 @@ class IntentClassifier:
         (r"\b(emergency|help me|help|danger|sos|call 911|i need help)\b", Intent.EMERGENCY),
         (r"\b(where am i|location|gps|address|coordinates)\b", Intent.LOCATION),
         
+        # Identification / Recognition (before DESCRIBE so "what is this" → IDENTIFY)
+        (r"\b(currency|money|note|bill|coin|rupee|dollar|cash)\b", Intent.IDENTIFY),
+        (r"\b(product|brand|package|bottle|can|box|item)\b", Intent.IDENTIFY),
+        (r"\b(document|paper|card|id card|license|passport|certificate)\b", Intent.IDENTIFY),
+        (r"\b(identify|recognize|what is this|what'?s this|what am i holding)\b", Intent.IDENTIFY),
+
         # Vision / General
         (r"\b(around me|surroundings|what'?s around|nearby|around)\b", Intent.SURROUNDINGS),
         (r"\b(what is near|what'?s near)\b", Intent.SURROUNDINGS),
         (r"\b(read|text|what does it say|ocr|sign|label|board)\b", Intent.READ_TEXT),
         (r"\b(describe|scene|what'?s in front|front of me|look|see)\b", Intent.DESCRIBE),
-        (r"\b(what is this|what is that|what do you see)\b", Intent.DESCRIBE),
+        (r"\b(what do you see)\b", Intent.DESCRIBE),
         
         # System
         (r"\b(battery|power|charge)\b", Intent.BATTERY),

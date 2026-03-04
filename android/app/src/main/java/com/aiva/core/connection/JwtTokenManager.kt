@@ -35,7 +35,7 @@ class JwtTokenManager(context: Context) {
         "aiva_secure_prefs",
         masterKey,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.ValueEncryptionScheme.AES256_GCM
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
     private val client = OkHttpClient.Builder()

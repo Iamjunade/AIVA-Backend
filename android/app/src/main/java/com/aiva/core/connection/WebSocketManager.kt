@@ -116,6 +116,13 @@ class WebSocketManager(
             return
         }
 
+        // Drop the frame if the OkHttp queue is backed up from previous transmissions
+        if ((webSocket?.queueSize() ?: 0) > 0) {
+            framesDropped++
+            Timber.w("WebSocket queue full. Dropped frame (Total drops: \$framesDropped)")
+            return
+        }
+
         webSocket?.send(frameData.toByteString())
     }
 

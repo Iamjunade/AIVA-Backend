@@ -19,6 +19,7 @@ import dagger.hilt.processor.internal.definecomponent.codegen._dagger_hilt_andro
 import dagger.hilt.processor.internal.definecomponent.codegen._dagger_hilt_components_SingletonComponent;
 import hilt_aggregated_deps._com_aiva_AivaApplication_GeneratedInjector;
 import hilt_aggregated_deps._com_aiva_MainActivity_GeneratedInjector;
+import hilt_aggregated_deps._com_aiva_core_service_AivaForegroundService_GeneratedInjector;
 import hilt_aggregated_deps._com_aiva_di_CoreModule;
 import hilt_aggregated_deps._com_aiva_feature_vision_VisionViewModel_HiltModules_BindsModule;
 import hilt_aggregated_deps._com_aiva_feature_vision_VisionViewModel_HiltModules_KeyModule;
@@ -63,6 +64,7 @@ import hilt_aggregated_deps._dagger_hilt_android_internal_modules_HiltWrapper_Ac
     aggregatedDeps = {
         _com_aiva_AivaApplication_GeneratedInjector.class,
         _com_aiva_MainActivity_GeneratedInjector.class,
+        _com_aiva_core_service_AivaForegroundService_GeneratedInjector.class,
         _com_aiva_di_CoreModule.class,
         _com_aiva_feature_vision_VisionViewModel_HiltModules_BindsModule.class,
         _com_aiva_feature_vision_VisionViewModel_HiltModules_KeyModule.class,

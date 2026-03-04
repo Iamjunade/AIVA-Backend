@@ -70,8 +70,27 @@ PROCESSING_TIMEOUT_MS = 1400  # Leave 100ms for network
 # =============================================================================
 
 YOLO_MODEL = os.getenv("AIVA_YOLO_MODEL", "yolov8n.pt")
-YOLO_CONFIDENCE = float(os.getenv("AIVA_YOLO_CONFIDENCE", "0.6"))
+YOLO_CONFIDENCE = float(os.getenv("AIVA_YOLO_CONFIDENCE", "0.78")) # Increased to prevent hallucination
 YOLO_IMG_SIZE = int(os.getenv("AIVA_YOLO_IMG_SIZE", "640"))
+
+# Class-specific confidence overrides (stricter for commonly hallucinated objects)
+YOLO_CLASS_OVERRIDES = {
+    "traffic light": 0.85,
+    "stop sign": 0.85,
+    "person": 0.65, # Keep person lower since it's a critical safety obstacle
+    "car": 0.70,
+    "truck": 0.70,
+    "bus": 0.70
+}
+
+# Temporal detection smoothing (anti-flicker)
+DETECTION_CONFIRM_FRAMES = int(os.getenv("AIVA_DETECT_CONFIRM", "2"))
+DETECTION_EXPIRE_FRAMES = int(os.getenv("AIVA_DETECT_EXPIRE", "3"))
+
+# Frame quality thresholds
+FRAME_BLUR_THRESHOLD = float(os.getenv("AIVA_FRAME_BLUR_MIN", "50.0"))
+FRAME_DARKNESS_THRESHOLD = int(os.getenv("AIVA_FRAME_DARK_MIN", "20"))
+FRAME_OVEREXPOSURE_PCT = float(os.getenv("AIVA_FRAME_OVEREXPOSE_MAX", "0.80"))
 
 
 # =============================================================================
@@ -126,6 +145,17 @@ GEMINI_MODEL = os.getenv("AIVA_GEMINI_MODEL", "gemini-2.0-flash")
 
 KNOWN_FACES_DIR = str(_PROJECT_ROOT / "known_faces")
 FACE_ANNOUNCE_COOLDOWN = float(os.getenv("AIVA_FACE_COOLDOWN", "30.0"))
+
+
+# =============================================================================
+# PROACTIVE SCENE NARRATION
+# =============================================================================
+
+NARRATION_ENABLED = os.getenv("AIVA_NARRATION_ENABLED", "true").lower() == "true"
+NARRATION_COOLDOWN_SEC = float(os.getenv("AIVA_NARRATION_COOLDOWN", "8.0"))
+NARRATION_MAX_PER_MINUTE = int(os.getenv("AIVA_NARRATION_MAX_PER_MIN", "4"))
+NARRATION_MIN_CHANGES = int(os.getenv("AIVA_NARRATION_MIN_CHANGES", "2"))
+NARRATION_DISTANCE_THRESHOLD = float(os.getenv("AIVA_NARRATION_DISTANCE_THRESHOLD", "1.0"))
 
 
 # =============================================================================

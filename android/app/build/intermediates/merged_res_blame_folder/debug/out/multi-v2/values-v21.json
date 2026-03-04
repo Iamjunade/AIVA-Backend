@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.aiva.app-mergeDebugResources-60:/values-v21/values-v21.xml",
+            "outputFile": "com.aiva.app-mergeDebugResources-73:/values-v21/values-v21.xml",
             "map": [
                 {
                     "source": "C:\\Users\\junaidpasha\\.gradle\\caches\\transforms-3\\890f48541567964c424bb6357ebca083\\transformed\\core-1.12.0\\res\\values-v21\\values-v21.xml",
@@ -20,6 +20,25 @@
                         "endLines": "2,3,4,5,264,265,266,267,270,275",
                         "endColumns": "117,63,66,63,115,125,125,127,12,12",
                         "endOffsets": "168,232,299,363,18766,18892,19018,19146,19318,19670"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\junaidpasha\\.gradle\\caches\\transforms-3\\6a6cf16bb58cf0636b64819e246dd55d\\transformed\\jetified-leakcanary-android-core-2.12\\res\\values-v21\\values-v21.xml",
+                    "from": {
+                        "startLines": "2,6",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,313",
+                        "endLines": "5,9",
+                        "endColumns": "10,10",
+                        "endOffsets": "308,535"
+                    },
+                    "to": {
+                        "startLines": "276,280",
+                        "startColumns": "4,4",
+                        "startOffsets": "19675,19933",
+                        "endLines": "279,283",
+                        "endColumns": "10,10",
+                        "endOffsets": "19928,20155"
                     }
                 },
                 {

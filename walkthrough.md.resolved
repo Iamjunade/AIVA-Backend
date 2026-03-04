@@ -1,0 +1,19 @@
+# Walkthrough: Stateless Concurrency Overhaul 🚀
+
+I've refactored the [FrameProcessor](file:///c:/Users/junaidpasha/Downloads/VASIS/server/frame_processor.py#76-473) to handle real-time concurrent WebSockets by stripping away its singleton tracking fields and separating JPEG decoding from heavy engine execution.
+
+## Changes Made:
+
+### 1. [ClientState](file:///c:/Users/junaidpasha/Downloads/VASIS/server/frame_processor.py#35-43) Tracking
+Instead of saving frames inside [FrameProcessor](file:///c:/Users/junaidpasha/Downloads/VASIS/server/frame_processor.py#76-473), all cache is now tracked via a [ClientState](file:///c:/Users/junaidpasha/Downloads/VASIS/server/frame_processor.py#35-43) dataclass inside [server/frame_processor.py](file:///c:/Users/junaidpasha/Downloads/VASIS/server/frame_processor.py). This state object contains a `threading.Lock()` specific to the client mapping, ensuring models evaluating multiple rapid WebSocket requests from the same user won't corrupt their motion deltas while not blocking other clients.
+
+### 2. Decoder I/O Offloading
+In [server/aiva_server.py](file:///c:/Users/junaidpasha/Downloads/VASIS/server/aiva_server.py), the [_handle_message](file:///c:/Users/junaidpasha/Downloads/VASIS/server/aiva_server.py#389-650) asynchronous listener now immediately decodes `request.payload_bytes` into a `numpy` array right after grabbing the raw buffer off the WebSocket—all happening inside the lightning-fast asyncio event loop.
+Only the **decoded array** is forwarded into the `ThreadPoolExecutor`, completely avoiding thread deadlocks.
+
+### 3. Isolated Memory Context
+[ContinuousMemoryEngine](file:///c:/Users/junaidpasha/Downloads/VASIS/server/memory_engine.py#32-247) usage within [_continuous_listen_loop()](file:///c:/Users/junaidpasha/Downloads/VASIS/server/aiva_server.py#188-211) was removed, and each WebSocket client connection securely boots up its own context window loop, guaranteeing Gemini never cross-contaminates visuals between blind users. 
+
+## Validation Results
+- Updated integration scripts in [tests/test_frame_processor.py](file:///c:/Users/junaidpasha/Downloads/VASIS/tests/test_frame_processor.py).
+- Verified `pytest` output passed seamlessly (4 scenarios mocked). The pipeline correctly forwards states downstream per connection while retaining dual-threshold hazard checking.

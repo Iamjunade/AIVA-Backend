@@ -1,7 +1,7 @@
 package com.aiva.di
 
 import android.content.Context
-import com.aiva.core.camera.CameraManager
+import com.aiva.core.audio.SpeechRecognizerManager
 import com.aiva.core.camera.CameraManager
 import com.aiva.core.connection.JwtTokenManager
 import com.aiva.core.connection.WebSocketManager
@@ -30,6 +30,12 @@ object CoreModule {
     @Singleton
     fun provideTTSManager(@ApplicationContext context: Context): TTSManager {
         return TTSManager(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSpeechRecognizerManager(@ApplicationContext context: Context): SpeechRecognizerManager {
+        return SpeechRecognizerManager(context)
     }
 
     @Provides
@@ -65,3 +71,4 @@ object CoreModule {
         return SosManager(context, locationManager)
     }
 }
+

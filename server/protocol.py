@@ -27,7 +27,8 @@ class MessageType(IntEnum):
     FRAME_DETECT = 0x01    # Object detection + depth + spatial
     FRAME_OCR = 0x02       # User-triggered text reading (EasyOCR)
     FRAME_DESCRIBE = 0x03  # Scene description (Gemini, optional)
-    FRAME_AUDIO = 0x04     # Voice command audio (Whisper)
+    FRAME_AUDIO = 0x04     # Voice command audio (Whisper) [legacy]
+    FRAME_TEXT_QUERY = 0x05  # Pre-transcribed text query (from mobile STT)
     PING = 0x10            # Keepalive
 
 
@@ -96,11 +97,15 @@ class FrameRequest:
 
         payload_bytes = data[HEADER_SIZE:]
 
-        if msg_type != MessageType.PING and len(payload_bytes) < 10:
+        if msg_type not in (MessageType.PING, MessageType.FRAME_TEXT_QUERY) and len(payload_bytes) < 10:
             raise ValueError(
                 f"Payload too small: {len(payload_bytes)} bytes "
                 f"(likely corrupt or empty)"
             )
+
+        # Text queries just need at least 1 byte of text
+        if msg_type == MessageType.FRAME_TEXT_QUERY and len(payload_bytes) < 1:
+            raise ValueError("Text query payload is empty")
 
         return FrameRequest(
             msg_type=msg_type,

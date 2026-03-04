@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.aiva.app-mergeDebugResources-60:/values-en-rCA/values-en-rCA.xml",
+            "outputFile": "com.aiva.app-mergeDebugResources-73:/values-en-rCA/values-en-rCA.xml",
             "map": [
                 {
                     "source": "C:\\Users\\junaidpasha\\.gradle\\caches\\transforms-3\\3f93c56dfc2cbab1c58b7c5aaf8dd861\\transformed\\jetified-material3-1.1.1\\res\\values-en-rCA\\values-en-rCA.xml",
